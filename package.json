@@ -1,0 +1,11 @@
+{
+  "name": "hairline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Hairline: a server-authoritative tactical FPS framework for the browser (WebGL2, zero dependencies).",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node test/sim.test.mjs"
+  }
+}

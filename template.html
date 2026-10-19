@@ -1,0 +1,351 @@
+<title>Hairline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Display:wght@600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Hairline — tactical HUD + menus.
+   Layout: full-bleed canvas; HUD anchored to the four corners + centre; menus as a left rail over a live scene.
+   Deliberately single-theme (dark, high contrast) for combat legibility on any background. */
+:root {
+  color-scheme: dark;
+  --ink: #0a0c10;
+  --ink-2: #12151b;
+  --panel: rgba(10, 12, 16, 0.78);
+  --panel-2: rgba(18, 21, 27, 0.92);
+  --line: rgba(236, 232, 224, 0.14);
+  --line-2: rgba(236, 232, 224, 0.28);
+  --text: #eeeae3;
+  --muted: #9a9ea6;
+  --flare: #ff5b3a;
+  --flare-ink: #2a0d06;
+  --tide: #3fd6c4;
+  --good: #62ffb0;
+  --warn: #ffc857;
+  --bad: #ff4d4d;
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --ui: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--ink); color: var(--text); font: 14px/1.45 var(--ui); overflow: hidden; -webkit-font-smoothing: antialiased; }
+#stage { position: fixed; inset: 0; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--flare); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ HUD */
+#hud { position: absolute; inset: 0; pointer-events: none; user-select: none;
+  padding: max(14px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(14px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.shadowed { text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.35); }
+#mini-wrap { position: absolute; top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); width: 220px; }
+#minimap { width: 220px; display: block; background: rgba(10,12,16,0.55); border: 1px solid var(--line); border-radius: 4px; }
+#location { margin-top: 6px; font: 600 12px/1 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); }
+
+#roundbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: grid; justify-items: center; gap: 4px; }
+#roundrow { display: flex; align-items: stretch; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+#roundrow .score { min-width: 44px; display: grid; place-items: center; font: 800 24px/1 var(--display); padding: 6px 10px; font-variant-numeric: tabular-nums; }
+#score-w { color: var(--good); }
+#score-l { color: var(--bad); }
+#round-timer { font: 800 34px/1 var(--display); letter-spacing: 0.04em; padding: 6px 18px; min-width: 96px; text-align: center; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+#round-timer.urgent { color: var(--bad); }
+#round-phase { font: 600 11px/1 var(--ui); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+#hostile-pips { display: flex; gap: 4px; }
+#hostile-pips i { width: 9px; height: 9px; transform: rotate(45deg); border: 1px solid rgba(255,77,77,0.6); }
+#hostile-pips i.alive { background: var(--bad); border-color: var(--bad); }
+
+#topright { position: absolute; top: 12px; right: max(16px, env(safe-area-inset-right, 0px)); display: grid; justify-items: end; gap: 8px; }
+#perf { font: 400 10.5px/1.45 var(--mono); color: #c9d1d9; background: rgba(0,0,0,0.5); padding: 4px 7px; white-space: pre; border-radius: 3px; }
+#killfeed { display: grid; gap: 4px; justify-items: end; }
+.kf { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; font: 600 12px/1.2 var(--ui); transition: opacity 0.6s; }
+.kf.mine { border-color: rgba(98,255,176,0.6); }
+.kf.death { border-color: rgba(255,77,77,0.7); }
+.kf b { font-weight: 700; }
+.kf-w { color: var(--muted); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+.kf-w em { color: var(--warn); font-style: normal; font-weight: 700; }
+.kf.fade { opacity: 0; }
+
+#vitals { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); display: flex; align-items: flex-end; gap: 14px; }
+#hp-block { display: grid; gap: 4px; }
+#hp-num { font: 800 54px/0.85 var(--display); font-variant-numeric: tabular-nums; }
+#hud.critical #hp-num { color: var(--bad); }
+#hp-track { width: 180px; height: 5px; background: rgba(255,255,255,0.14); border-radius: 2px; overflow: hidden; }
+#hp-bar { height: 100%; background: var(--text); transform-origin: left; }
+#hud.critical #hp-bar { background: var(--bad); }
+#armor-box { display: flex; align-items: center; gap: 6px; padding-bottom: 8px; }
+#armor-box svg { width: 18px; height: 18px; fill: var(--tide); }
+#armor-box.empty svg { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+#armor-num { font: 700 24px/1 var(--display); color: var(--tide); font-variant-numeric: tabular-nums; }
+#armor-box.empty #armor-num { color: var(--muted); }
+.unit { font: 600 10px/1 var(--ui); letter-spacing: 0.16em; color: var(--muted); text-transform: uppercase; }
+
+#abilities { position: absolute; left: 50%; bottom: max(14px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; gap: 8px; }
+.ability { position: relative; width: 58px; height: 58px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; display: grid; place-items: center; overflow: hidden; opacity: 0.55; }
+.ability.ready { opacity: 1; border-color: var(--line-2); }
+.ability.active { border-color: var(--flare); box-shadow: 0 0 0 1px var(--flare) inset; }
+.ability svg { width: 26px; height: 26px; fill: var(--text); stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; }
+.ability[data-key="X"].ready svg { fill: var(--warn); stroke: var(--warn); }
+.ab-key { position: absolute; top: 3px; left: 5px; font: 700 10px/1 var(--mono); color: var(--muted); }
+.ab-name { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font: 600 10px/1 var(--ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); display: none; }
+.ab-cd { position: absolute; inset: 0; --cd: 0; background: conic-gradient(rgba(0,0,0,0.62) calc(var(--cd) * 360deg), transparent 0); }
+.ab-pips { position: absolute; bottom: 4px; left: 0; right: 0; display: flex; justify-content: center; gap: 3px; }
+.ab-pips i { width: 6px; height: 6px; border-radius: 1px; background: rgba(255,255,255,0.18); }
+.ab-pips i.on { background: var(--text); }
+.ability[data-key="X"] .ab-pips i.on { background: var(--warn); }
+
+#weapon { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); display: grid; justify-items: end; gap: 4px; }
+#ammo { display: flex; align-items: baseline; gap: 8px; }
+#ammo-mag { font: 800 54px/0.85 var(--display); font-variant-numeric: tabular-nums; }
+#ammo-mag.low { color: var(--warn); }
+#ammo-reserve { font: 700 22px/1 var(--display); color: var(--muted); font-variant-numeric: tabular-nums; }
+#weapon-name { font: 700 13px/1 var(--ui); letter-spacing: 0.18em; text-transform: uppercase; }
+#weapon-detail { font: 500 11px/1.2 var(--ui); color: var(--muted); }
+#reload-bar { width: 150px; height: 3px; background: rgba(255,255,255,0.15); }
+#reload-bar > i { display: block; height: 100%; background: var(--warn); transform-origin: left; }
+
+#crosshair { position: absolute; left: 50%; top: 50%; width: 96px; height: 96px; transform: translate(-50%, -50%); }
+#hitmarker { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%); opacity: 0; }
+#hitmarker::before, #hitmarker::after { content: ""; position: absolute; inset: 0; background:
+  linear-gradient(45deg, transparent 46%, currentColor 46%, currentColor 54%, transparent 54%) ,
+  linear-gradient(-45deg, transparent 46%, currentColor 46%, currentColor 54%, transparent 54%);
+  -webkit-mask: radial-gradient(circle, transparent 5px, #000 5.5px); mask: radial-gradient(circle, transparent 5px, #000 5.5px); }
+#hitmarker { color: #fff; }
+#hitmarker.head { color: var(--warn); }
+#hitmarker.kill { color: var(--bad); }
+#hitmarker.show { animation: hit 0.22s ease-out; }
+@keyframes hit { 0% { opacity: 1; transform: translate(-50%, -50%) scale(1.25); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
+#dmg-layer { position: absolute; inset: 0; overflow: hidden; }
+.dmg { position: absolute; transform: translate(-50%, -50%); font: 800 20px/1 var(--display); color: #fff; animation: dmg 0.8s ease-out forwards; }
+.dmg.head { color: var(--warn); font-size: 26px; }
+@keyframes dmg { 0% { opacity: 1; transform: translate(-50%, -50%); } 100% { opacity: 0; transform: translate(-50%, -160%); } }
+#dmg-dir { position: absolute; left: 50%; top: 50%; width: 240px; height: 240px; margin: -120px 0 0 -120px; opacity: 0; transform: rotate(var(--a, 0rad)); }
+#dmg-dir::before { content: ""; position: absolute; left: 50%; top: 0; width: 70px; height: 14px; margin-left: -35px; background: radial-gradient(ellipse at 50% 0%, rgba(255,60,50,0.95), rgba(255,60,50,0) 70%); border-top: 3px solid var(--bad); border-radius: 50% 50% 0 0 / 100% 100% 0 0; }
+#dmg-dir.show { animation: dir 1.1s ease-out; }
+@keyframes dir { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+#plant { position: absolute; left: 50%; top: calc(50% + 70px); transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; }
+#plant-label { font: 700 11px/1 var(--ui); letter-spacing: 0.2em; text-transform: uppercase; color: var(--warn); }
+#plant-track { width: 220px; height: 6px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,200,87,0.5); }
+#plant-bar { height: 100%; background: var(--warn); transform-origin: left; }
+
+#banner { position: absolute; left: 0; right: 0; top: 24%; display: grid; justify-items: center; gap: 6px; opacity: 0; }
+#banner.show { animation: banner 2.6s ease-out forwards; }
+@keyframes banner { 0% { opacity: 0; transform: translateY(8px); } 10% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
+#banner-title { font: 900 64px/0.9 var(--display); letter-spacing: 0.06em; text-transform: uppercase; }
+#banner.win #banner-title { color: var(--good); }
+#banner.loss #banner-title { color: var(--bad); }
+#banner-sub { font: 600 13px/1 var(--ui); letter-spacing: 0.2em; text-transform: uppercase; color: var(--text); }
+#banner::after { content: ""; width: 220px; height: 1px; background: currentColor; opacity: 0.5; order: 1; }
+
+#scope { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 0, transparent min(36vh, 36vw), rgba(0,0,0,0.98) calc(min(36vh, 36vw) + 1px)); }
+#scope::before, #scope::after { content: ""; position: absolute; background: rgba(0,0,0,0.92); }
+#scope::before { left: 50%; top: calc(50% - min(36vh, 36vw)); bottom: calc(50% - min(36vh, 36vw)); width: 1px; }
+#scope::after { top: 50%; left: calc(50% - min(36vh, 36vw)); right: calc(50% - min(36vh, 36vw)); height: 1px; }
+#scope i { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: var(--flare); border-radius: 50%; }
+#smoke-tint { position: absolute; inset: 0; background: rgb(196, 192, 206); opacity: 0; }
+#lowhp { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(180, 20, 20, 0.55)); opacity: 0; }
+#hurt { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 40, 30, 0.45)); opacity: 0; }
+
+/* ------------------------------------------------------------------ Menus */
+#menu { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 560px) 1fr; background: linear-gradient(90deg, rgba(10,12,16,0.94) 0%, rgba(10,12,16,0.86) 38%, rgba(10,12,16,0.2) 75%, rgba(10,12,16,0) 100%); overflow-y: auto; }
+#menu[hidden] { display: none !important; }
+#rail { padding-block: max(28px, env(safe-area-inset-top, 0px)) 28px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: 24px; display: grid; align-content: start; gap: 22px; min-width: 0; }
+#brand h1 { margin: 0; font: 900 clamp(56px, 9vw, 96px)/0.82 var(--display); letter-spacing: 0.04em; text-transform: uppercase; }
+#brand .hairline { height: 1px; background: var(--flare); margin: 12px 0 10px; width: 100%; max-width: 420px; position: relative; }
+#brand .hairline::after { content: ""; position: absolute; left: 62%; top: -4px; width: 1px; height: 9px; background: var(--flare); }
+#brand p { margin: 0; color: var(--muted); font-size: 13px; letter-spacing: 0.04em; max-width: 46ch; }
+#tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+.tab { background: none; border: 0; padding: 10px 14px 9px; font: 700 12px/1 var(--ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--flare); }
+.tab:hover { color: var(--text); }
+.panel { display: grid; gap: 18px; min-width: 0; }
+.panel[hidden] { display: none; }
+.cta { justify-self: start; display: inline-flex; align-items: center; gap: 14px; background: var(--flare); color: #fff; border: 0; padding: 16px 26px 15px; font: 800 22px/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; clip-path: polygon(0 0, 100% 0, 100% 70%, calc(100% - 14px) 100%, 0 100%); transition: filter 0.15s, transform 0.15s; }
+.cta:hover { filter: brightness(1.08); transform: translateX(2px); }
+.cta small { font: 600 11px/1 var(--ui); letter-spacing: 0.14em; opacity: 0.85; }
+.lede { margin: 0; color: var(--text); max-width: 52ch; }
+.muted { color: var(--muted); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 3px; overflow: hidden; }
+.seg button { background: none; border: 0; padding: 8px 12px; font: 600 12px/1 var(--ui); letter-spacing: 0.08em; cursor: pointer; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--ink); }
+.label { font: 700 11px/1 var(--ui); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+.field { display: grid; gap: 8px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.note { font-size: 12px; color: var(--muted); }
+.warn-note { border-left: 2px solid var(--warn); padding: 6px 10px; font-size: 13px; background: rgba(255,200,87,0.07); }
+
+/* loadout */
+.wtabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.wtab { text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; cursor: pointer; display: grid; gap: 2px; min-width: 0; }
+.wtab b { font: 800 18px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; }
+.wtab span { font-size: 11px; color: var(--muted); }
+.wtab[aria-pressed="true"] { border-color: var(--flare); box-shadow: 0 0 0 1px var(--flare) inset; }
+.loadout-grid { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 18px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: none; border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 11px; font: 600 12px/1 var(--ui); cursor: pointer; color: var(--muted); }
+.chip[aria-pressed="true"] { border-color: var(--text); color: var(--ink); background: var(--text); }
+.chip:disabled { opacity: 0.35; cursor: not-allowed; }
+.stats { display: grid; gap: 7px; }
+.stat { display: grid; grid-template-columns: 96px 1fr 52px; align-items: center; gap: 8px; font-size: 12px; }
+.stat .bar { height: 4px; background: rgba(255,255,255,0.12); position: relative; }
+.stat .bar i { position: absolute; inset: 0 auto 0 0; background: var(--text); }
+.stat .bar i.delta-up { background: var(--good); }
+.stat .bar i.delta-down { background: var(--warn); }
+.stat output { text-align: right; font: 600 12px/1 var(--mono); font-variant-numeric: tabular-nums; }
+#spray { width: 210px; height: 280px; background: #f1efea; border-radius: 2px; display: block; }
+.spray-cap { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* settings */
+.slider { display: grid; grid-template-columns: 150px minmax(0, 1fr) 76px; gap: 12px; align-items: center; }
+.slider input[type=range] { width: 100%; accent-color: var(--flare); }
+.slider output { font: 600 12px/1 var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.swatches { display: flex; gap: 6px; }
+.swatch { width: 24px; height: 24px; border-radius: 3px; border: 2px solid transparent; cursor: pointer; }
+.swatch[aria-pressed="true"] { border-color: var(--text); }
+.toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.toggle input { accent-color: var(--flare); width: 16px; height: 16px; }
+#xh-preview { width: 96px; height: 96px; background: #6d7178; border-radius: 3px; }
+
+/* manual */
+.keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; font-size: 13px; }
+.keys div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); padding: 5px 0; }
+kbd { font: 600 11px/1 var(--mono); padding: 4px 6px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 3px; background: var(--ink-2); white-space: nowrap; }
+.sys { display: grid; gap: 10px; }
+.sys h3 { margin: 0; font: 800 18px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; }
+.sys p { margin: 0; color: var(--muted); font-size: 13px; max-width: 64ch; }
+
+#loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ink); z-index: 20; }
+#loading[hidden] { display: none; }
+#loading .box { display: grid; gap: 12px; width: min(360px, 80vw); }
+#loading h2 { margin: 0; font: 900 40px/1 var(--display); letter-spacing: 0.06em; }
+#load-track { height: 2px; background: rgba(255,255,255,0.12); }
+#load-bar { height: 100%; width: 0; background: var(--flare); }
+#load-text { font: 400 12px/1.4 var(--mono); color: var(--muted); }
+#error { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ink); z-index: 30; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
+#error[hidden] { display: none; }
+#error div { max-width: 52ch; display: grid; gap: 10px; }
+#error h2 { margin: 0; font: 900 34px/1 var(--display); text-transform: uppercase; color: var(--flare); }
+#resume-hint { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font: 700 12px/1 var(--ui); letter-spacing: 0.2em; text-transform: uppercase; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; }
+
+@media (max-width: 860px) {
+  #menu { grid-template-columns: minmax(0, 1fr); background: rgba(10,12,16,0.93); }
+  .loadout-grid { grid-template-columns: minmax(0, 1fr); }
+  .wtabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .slider { grid-template-columns: minmax(0, 1fr) 70px; }
+  .slider label { grid-column: 1 / -1; }
+  .keys { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cta, .kf { transition: none; }
+  #banner.show { animation-duration: 0.01s; opacity: 1; }
+}
+</style>
+
+<div id="stage">
+  <canvas id="view" tabindex="0" aria-label="Game view"></canvas>
+
+  <div id="hud" hidden>
+    <div id="smoke-tint"></div>
+    <div id="lowhp"></div>
+    <div id="hurt"></div>
+    <div id="scope" hidden><i></i></div>
+    <div id="mini-wrap">
+      <canvas id="minimap"></canvas>
+      <div id="location" class="shadowed"></div>
+    </div>
+    <div id="roundbar">
+      <div id="roundrow"><div class="score" id="score-w">0</div><div id="round-timer">1:40</div><div class="score" id="score-l">0</div></div>
+      <div id="round-phase" class="shadowed">Round 1</div>
+      <div id="hostile-pips"></div>
+    </div>
+    <div id="topright"><div id="perf" hidden></div><div id="killfeed"></div></div>
+    <canvas id="crosshair" width="96" height="96"></canvas>
+    <div id="hitmarker"></div>
+    <div id="dmg-dir"></div>
+    <div id="dmg-layer"></div>
+    <div id="plant" hidden><div id="plant-label">Planting</div><div id="plant-track"><div id="plant-bar"></div></div></div>
+    <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+    <div id="vitals" class="shadowed">
+      <div id="hp-block"><span class="unit">Health</span><div id="hp-num">100</div><div id="hp-track"><div id="hp-bar"></div></div></div>
+      <div id="armor-box"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z"/></svg><span id="armor-num">50</span></div>
+    </div>
+    <div id="abilities"></div>
+    <div id="weapon" class="shadowed">
+      <div id="ammo"><span id="ammo-mag">25</span><span id="ammo-reserve">75</span></div>
+      <div id="weapon-name">Halberd</div>
+      <div id="weapon-detail"></div>
+      <div id="reload-bar" hidden><i></i></div>
+    </div>
+  </div>
+
+  <div id="resume-hint" hidden>Click to resume</div>
+
+  <div id="menu">
+    <div id="rail">
+      <header id="brand">
+        <h1>Hairline</h1>
+        <div class="hairline"></div>
+        <p>Tactical FPS framework. 128-tick authoritative sim, client prediction, baked lighting, deterministic spray patterns. Map: Saltworks.</p>
+      </header>
+      <nav id="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-panel="p-play">Play</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="p-loadout">Loadout</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="p-settings">Settings</button>
+        <button class="tab" role="tab" aria-selected="false" data-panel="p-manual">Field manual</button>
+      </nav>
+
+      <section class="panel" id="p-play">
+        <p class="lede">Clear Saltworks of hostiles or plant the spike on A or B before the clock runs out. Dummies in spawn strafe for warm-up; the back wall of spawn is a 10&nbsp;cm spray grid.</p>
+        <div id="touch-note" class="warn-note" hidden>Hairline needs a keyboard and mouse. You can still browse loadouts and settings here.</div>
+        <button class="cta" id="deploy"><span id="deploy-label">Deploy</span><small id="deploy-sub">Saltworks · 9 hostiles</small></button>
+        <div class="field">
+          <span class="label">Bot difficulty</span>
+          <div class="seg" id="difficulty"></div>
+        </div>
+        <dl class="kv">
+          <dt>Move</dt><dd><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> · walk <kbd>Shift</kbd> · crouch <kbd>V</kbd> · jump <kbd>Space</kbd></dd>
+          <dt>Fight</dt><dd>fire <kbd>LMB</kbd> · aim <kbd>RMB</kbd> · reload <kbd>R</kbd> · inspect <kbd>Y</kbd> · weapons <kbd>1</kbd>–<kbd>4</kbd></dd>
+          <dt>Abilities</dt><dd><kbd>C</kbd> Haze · <kbd>Q</kbd> Pulse · <kbd>E</kbd> Slipstream · <kbd>X</kbd> Overclock · plant <kbd>F</kbd> (hold)</dd>
+        </dl>
+      </section>
+
+      <section class="panel" id="p-loadout" hidden>
+        <div class="wtabs" id="wtabs"></div>
+        <div class="loadout-grid">
+          <div class="field" style="gap:16px">
+            <div id="att-slots" class="field" style="gap:12px"></div>
+            <div class="field"><span class="label">Skin</span><div class="chips" id="skins"></div><span class="note" id="skin-blurb"></span></div>
+            <div class="stats" id="stats"></div>
+          </div>
+          <div>
+            <canvas id="spray" width="420" height="560"></canvas>
+            <div class="spray-cap" id="spray-cap">First 25 rounds at 10 m, no compensation.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="p-settings" hidden>
+        <div class="field" id="set-aim"></div>
+        <div class="field">
+          <span class="label">Crosshair</span>
+          <div class="row"><canvas id="xh-preview" width="96" height="96"></canvas><div class="field" id="set-xh" style="flex:1;min-width:220px"></div></div>
+        </div>
+        <div class="field" id="set-misc"></div>
+        <div class="field" id="set-net"></div>
+      </section>
+
+      <section class="panel" id="p-manual" hidden>
+        <div class="keys" id="keys"></div>
+        <div class="sys" id="systems"></div>
+      </section>
+    </div>
+    <div></div>
+  </div>
+
+  <div id="loading"><div class="box"><h2>HAIRLINE</h2><div id="load-track"><div id="load-bar"></div></div><div id="load-text">Compiling map…</div></div></div>
+  <div id="error" hidden><div><h2>Can’t start</h2><p id="error-text"></p></div></div>
+</div>
